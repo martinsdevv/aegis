@@ -6,6 +6,8 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"strings"
+
+	"github.com/martinsdevv/aegis/internal/gateway/middleware"
 )
 
 type FinalURL struct {
@@ -49,6 +51,7 @@ func NewProxy(targetHost string) (*httputil.ReverseProxy, error) {
 		}
 	}
 	newProxy.Director = newDirector
+	newProxy = middleware.NewMiddleware(newProxy)
 	return newProxy, nil
 }
 
