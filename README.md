@@ -1,4 +1,4 @@
 ### Portas Locais:
 
-- **gateway**: `:8080`
+- **gateway**: `:8000`
 - **upstream-mock**: `:9000`
