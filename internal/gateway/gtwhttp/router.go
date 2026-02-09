@@ -11,7 +11,8 @@ func NewRouter(healthCheck *health.Checker) *http.ServeMux {
 	mux := http.NewServeMux()
 	prx, err := proxy.NewProxy("http://localhost:9000")
 	if err != nil {
-		panic(err)
+		http.Error(nil, "the proxy could not be created", http.StatusInternalServerError)
+		return nil
 	}
 
 	mux.HandleFunc("/healthz", health.HealthHandler(healthCheck))

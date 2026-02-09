@@ -48,6 +48,7 @@ func HandleEcho(w http.ResponseWriter, r *http.Request) {
 
 	err := json.NewDecoder(r.Body).Decode(&pld)
 	if err != nil {
+		slog.Error("invalid json body", "err", err)
 		http.Error(w, "invalid json body", http.StatusUnprocessableEntity)
 		return
 	}
