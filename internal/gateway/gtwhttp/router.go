@@ -3,11 +3,12 @@ package gtwhttp
 import (
 	"net/http"
 
+	"github.com/martinsdevv/aegis/internal/gateway/middleware"
 	"github.com/martinsdevv/aegis/internal/gateway/proxy"
 	"github.com/martinsdevv/aegis/internal/health"
 )
 
-func NewRouter(healthCheck *health.Checker) *http.ServeMux {
+func NewRouter(healthCheck *health.Checker) http.Handler {
 	mux := http.NewServeMux()
 	prx, err := proxy.NewProxy("http://localhost:9000")
 	if err != nil {
@@ -19,5 +20,8 @@ func NewRouter(healthCheck *health.Checker) *http.ServeMux {
 	mux.HandleFunc("/proxy/", proxy.HandleProxy(prx))
 	mux.HandleFunc("/proxy", proxy.HandleProxy(prx))
 
-	return mux
+	var handler http.Handler = mux
+	handler = middleware.Logger(handler)
+
+	return handler
 }
