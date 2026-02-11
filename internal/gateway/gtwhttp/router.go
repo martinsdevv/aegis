@@ -19,9 +19,10 @@ func NewRouter(healthCheck *health.Checker) http.Handler {
 	mux.HandleFunc("/healthz", health.HealthHandler(healthCheck))
 	mux.HandleFunc("/proxy/", proxy.HandleProxy(prx))
 	mux.HandleFunc("/proxy", proxy.HandleProxy(prx))
+	mux.HandleFunc("/panic", HandleNilPointer)
 
 	var handler http.Handler = mux
-	handler = middleware.Logger(handler)
+	handler = middleware.NewMiddleware(handler)
 
 	return handler
 }

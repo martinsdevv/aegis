@@ -3,30 +3,9 @@ package middleware
 import (
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 )
-
-type responseWriter struct {
-	http.ResponseWriter
-	status      int
-	wroteHeader bool
-}
-
-func (rw *responseWriter) WriteHeader(code int) {
-	if rw.wroteHeader {
-		return
-	}
-	rw.status = code
-	rw.wroteHeader = true
-	rw.ResponseWriter.WriteHeader(code)
-}
-
-func (rw *responseWriter) Write(b []byte) (int, error) {
-	if !rw.wroteHeader {
-		rw.WriteHeader(http.StatusOK)
-	}
-	return rw.ResponseWriter.Write(b)
-}
 
 func Logger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -35,12 +14,19 @@ func Logger(next http.Handler) http.Handler {
 		wrapped := &responseWriter{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(wrapped, r)
 
+		host := r.Host
+		if strings.HasPrefix(r.URL.Path, "/proxy") {
+			if ups := wrapped.Header().Get("X-Upstream-Host"); ups != "" {
+				host = ups
+			}
+		}
+
 		slog.Info("request processed",
 			"method", r.Method,
 			"path", r.URL.Path,
-			"host", r.Host,
+			"host", host,
 			"status", wrapped.status,
-			"duration_ms", time.Since(start),
+			"duration_ms", time.Since(start).Milliseconds(),
 		)
 	})
 }

@@ -1,14 +1,15 @@
 package proxy
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"strings"
-
-	"github.com/martinsdevv/aegis/internal/gateway/middleware"
 )
+
+type ctxKeyUpstreamHost struct{}
 
 type FinalURL struct {
 	scheme string
@@ -51,7 +52,10 @@ func NewProxy(targetHost string) (*httputil.ReverseProxy, error) {
 		}
 	}
 	newProxy.Director = newDirector
-	newProxy = middleware.NewMiddleware(newProxy)
+	newProxy.ModifyResponse = func(resp *http.Response) error {
+		resp.Header.Set("X-Upstream-Host", resp.Request.URL.Host)
+		return nil
+	}
 	return newProxy, nil
 }
 
@@ -65,4 +69,9 @@ func (u FinalURL) URL() *url.URL {
 
 func (u FinalURL) String() string {
 	return u.URL().String()
+}
+
+func UpstreamHostFromContext(ctx context.Context) (string, bool) {
+	v, ok := ctx.Value(ctxKeyUpstreamHost{}).(string)
+	return v, ok
 }

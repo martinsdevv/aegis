@@ -3,31 +3,66 @@ package middleware
 import (
 	"context"
 	"net/http"
-	"net/http/httputil"
 )
 
-func NewMiddleware(proxy *httputil.ReverseProxy) *httputil.ReverseProxy {
-	mwProxy := ContentIDHeader(proxy, "contentID")
-	return mwProxy
+type (
+	ctxKeyContentID struct{}
+	Middleware      func(http.Handler) http.Handler
+)
+
+type responseWriter struct {
+	http.ResponseWriter
+	status      int
+	wroteHeader bool
 }
 
-func ContentIDHeader(proxy *httputil.ReverseProxy, contentID string) *httputil.ReverseProxy {
-	defaultDirector := proxy.Director
-	newDirector := func(r *http.Request) {
-		defaultDirector(r)
-		head := r.Header.Get("X-Content-ID")
-		if head == "" {
-			head = contentID
-			r.Header.Add("X-Content-ID", head)
-		}
-		ctx := context.WithValue(r.Context(), "contentID", head)
-		*r = *r.WithContext(ctx)
+func (rw *responseWriter) WriteHeader(code int) {
+	if rw.wroteHeader {
+		return
 	}
-	proxy.Director = newDirector
-	proxy.ModifyResponse = func(r *http.Response) error {
-		head, _ := r.Request.Context().Value("contentID").(string)
-		r.Header.Set("X-Content-ID", head)
-		return nil
+
+	rw.status = code
+	rw.wroteHeader = true
+	rw.ResponseWriter.WriteHeader(code)
+}
+
+func (rw *responseWriter) Write(b []byte) (int, error) {
+	if !rw.wroteHeader {
+		rw.WriteHeader(http.StatusOK)
 	}
-	return proxy
+	return rw.ResponseWriter.Write(b)
+}
+
+func Chain(h http.Handler, mws ...Middleware) http.Handler {
+	for i := len(mws) - 1; i >= 0; i-- {
+		h = mws[i](h)
+	}
+	return h
+}
+
+func NewMiddleware(handler http.Handler) http.Handler {
+	return Chain(handler, ContentID("contentID"), Logger, Recover)
+}
+
+func ContentID(defaultID string) Middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			cid := r.Header.Get("X-Content-ID")
+			if cid == "" {
+				cid = defaultID
+				r.Header.Set("X-Content-ID", cid)
+			}
+
+			ctx := context.WithValue(r.Context(), ctxKeyContentID{}, cid)
+			r = r.WithContext(ctx)
+
+			wrapped := &responseWriter{
+				ResponseWriter: w,
+				status:         http.StatusOK,
+			}
+
+			wrapped.Header().Set("X-Content-ID", cid)
+			next.ServeHTTP(wrapped, r)
+		})
+	}
 }
