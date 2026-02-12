@@ -10,7 +10,7 @@ func Keyring(keys []string) Middleware {
 			kh := r.Header.Get("X-API-Key")
 
 			if kh == "" {
-				http.Error(w, "X-API-Key header is absent", http.StatusBadRequest)
+				http.Error(w, "X-API-Key header is absent", http.StatusUnauthorized)
 				return
 			}
 
@@ -20,10 +20,10 @@ func Keyring(keys []string) Middleware {
 			}
 
 			if _, ok := set[kh]; !ok {
-				http.Error(w, "X-API-Key header is invalid", http.StatusBadRequest)
+				http.Error(w, "X-API-Key header is invalid", http.StatusForbidden)
 				return
 			}
-
+			r.Header.Del("X-API-Key")
 			next.ServeHTTP(w, r)
 		})
 	}
