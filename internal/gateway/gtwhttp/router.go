@@ -1,8 +1,10 @@
 package gtwhttp
 
 import (
+	"log"
 	"net/http"
 
+	"github.com/martinsdevv/aegis/internal/config"
 	"github.com/martinsdevv/aegis/internal/gateway/middleware"
 	"github.com/martinsdevv/aegis/internal/gateway/proxy"
 	"github.com/martinsdevv/aegis/internal/health"
@@ -10,7 +12,12 @@ import (
 
 func NewRouter(healthCheck *health.Checker) http.Handler {
 	mux := http.NewServeMux()
-	prx, err := proxy.NewProxy("http://localhost:9000")
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	prx, err := proxy.NewProxy(cfg.AegisUpstreamURL)
 	if err != nil {
 		http.Error(nil, "the proxy could not be created", http.StatusInternalServerError)
 		return nil

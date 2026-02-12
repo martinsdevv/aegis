@@ -1,30 +1,33 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"strings"
+
 	"github.com/joho/godotenv"
-	"fmt"
 )
 
 type Config struct {
-	AEGIS_LISTEN_ADDR string
-	AEGIS_UPSTREAM_URL string
-	AEGIS_API_KEYS []string
+	AegisListenPort   string
+	AegisUpstreamURL  string
+	AegisAPIKeys      []string
+	AegisUpstreamPort string
 }
 
 func Load() (Config, error) {
 	_ = godotenv.Load()
-	
-	if err := RequireEnvs("AEGIS_UPSTREAM_URL", "AEGIS_API_KEYS"); err != nil {
+
+	if err := RequireEnvs("AegisUpstreamURL", "AegisAPIKeys", "AegisListenPort", "AegisUpstreamPort"); err != nil {
 		return Config{}, err
 	}
-	cfg := Config {
-		AEGIS_LISTEN_ADDR: getEnv("AEGIS_LISTEN_ADDR", "8000"),
-		AEGIS_UPSTREAM_URL: getEnv("AEGIS_UPSTREAM_URL", "9000"),
-		AEGIS_API_KEYS: parseList("AEGIS_API_KEYS"),
+	cfg := Config{
+		AegisListenPort:   getEnv("AegisListenPort", "8000"),
+		AegisUpstreamURL:  getEnv("AegisUpstreamURL", "http://localhost:9000"),
+		AegisUpstreamPort: getEnv("AegisUpstreamPort", "9000"),
+		AegisAPIKeys:      parseList("AegisAPIKeys"),
 	}
-	
+
 	return cfg, nil
 }
 
@@ -62,7 +65,7 @@ func RequireEnvs(keys ...string) error {
 			missing = append(missing, k)
 		}
 	}
-	if len (missing) > 0 {
+	if len(missing) > 0 {
 		return fmt.Errorf("missing required env(s): %s", strings.Join(missing, ", "))
 	}
 	return nil
