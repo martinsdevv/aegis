@@ -1,72 +1,130 @@
-# Aegis 
-Aegis é um API Gateway que atua como proxy reverso, oferecendo health checks, e futuramente observabilidade, autenticação, rate-limiting e quotas.
+# Aegis
+
+Aegis é um API Gateway escrito em Go que atua como um reverse proxy seguro, oferecendo autenticação por API Key, rate limiting por consumidor, health checks com controle de readiness e uma pipeline própria de middlewares HTTP.
+
+O objetivo do projeto é demonstrar arquitetura modular em Go, controle explícito de fluxo de requisições e fundamentos de segurança em APIs HTTP.
+
+## ✨ Funcionalidades Implementadas
+
+* **Reverse Proxy:** Com rewrite de path automático.
+* **Healthcheck:** Endpoint de saúde do gateway (`/healthz`) com controle de readiness.
+* **Middleware Chain:** Implementação customizada (Chain Pattern) para processamento de requisições.
+* **Segurança:** 
+  * Autenticação via header `X-API-Key`.
+  * Validação de chave por keyring configurável.
+  * Sanitização de headers sensíveis.
+  * Recovery middleware para tratamento de panics.
+* **Rate Limiting:** Controle por consumidor (Token Bucket) usando `golang.org/x/time/rate`.
+* **Observabilidade:** Logging estruturado de requisições e enriquecimento de resposta com headers customizados (ex: `X-Content-Id`).
 
 ---
 
-## Status de Desenvolvimento
+## 🏗 Arquitetura
 
-- [x] Upstream mock server
-- [x] Health check
-- [x] Reverse proxy com rewrite de path
-- [x] Testes de integração do proxy
-- [ ] Middlewares (request-id, logging, recover)
-- [ ] API Keys
-- [ ] Rate limiting
+O projeto segue uma organização idiomática em Go:
 
-## Como Rodar
+* `cmd/`: Entrypoints da aplicação (Gateway e Upstream Mock).
+* `internal/`: Implementação do domínio, middlewares e configurações.
+* **Middleware Chain:** Composta manualmente para controle total da ordem de execução.
+* **Rate Limit Store:** Em memória com TTL e rotina de cleanup automática.
 
-- Garanta que o Go está instalado na sua máquina
+---
 
+## ⚙️ Variáveis de Ambiente
+
+Antes de rodar o gateway, configure as seguintes variáveis obrigatórias:
+
+| Variável | Descrição | Exemplo |
+| :--- | :--- | :--- |
+| `AegisListenPort` | Porta onde o gateway será executado | `8000` |
+| `AegisUpstreamURL` | URL base do serviço de upstream | `http://localhost:9000` |
+| `AegisUpstreamPort` | Porta do serviço de upstream | `9000` |
+| `AegisAPIKeys` | Lista de API Keys válidas (separadas por vírgula) | `K1,K2,K3` |
+
+### Como configurar:
+
+**Linux / macOS (Bash/Zsh)**
+```bash
+export AegisListenPort=8000
+export AegisUpstreamURL=http://localhost:9000
+export AegisUpstreamPort="9000"
+export AegisAPIKeys=K1,K2,K3
+```
+
+**Windows (PowerShell)**
+```bash
+$env:AegisListenPort="8000"
+$env:AegisUpstreamURL="http://localhost:9000"
+$env:AegisUpstreamPort="9000"
+$env:AegisAPIKeys="K1,K2,K3"
+```
+---
+
+## 🚀 Como Rodar
+
+1. **Verifique a instalação do Go:**
 ```bash
 go version
 ```
+ 
+2. **Configure as variáveis de ambiente** (conforme seção acima).
 
-- Da raiz do projeto, rode o servidor upstream mock
+3. **Rode o Upstream Mock (Serviço de teste):**
 
 ```bash
 go run ./cmd/upstream-mock/main.go
 ```
 
-- Da raiz do projeto, rode o gateway
-
+4. **Rode o Gateway:**
 ```bash
 go run ./cmd/gateway/main.go
 ```
 
-- Portas: 
-- **gateway**: `:8000`
-- **upstream-mock**: `:9000`
+---
 
-## Teste
-
-Caso esteja no windows, recomendo utilizar o Invoke-RestMethod pra testar, ou um software de teste como Postman ou Insomnia. Caso esteja em sistemas linux/unix like o curl funcionará perfeitamente.
+## 🔎 Endpoints e Testes
 
 ### Upstream (:9000)
+* `GET /ping` → `{"pong": true}`
+* `GET /healthz` → `{"ok": true}`
+* `POST /echo` → Retorna o mesmo body enviado.
 
-Endpoints:
-- /ping -> retorna {"pong": true}
-- /healthz -> retorna {"ok": true}
-- /echo -> retorna o mesmo body inserido na requisição (POST)
+### Gateway (:8000)
+> ⚠️ Todas as rotas protegidas exigem o header `X-API-Key`.
+
+**Teste de Healthcheck do Gateway:**
+```bash
+curl -i -H "X-API-Key: K1" http://localhost:8000/healthz
+```
+
+**Teste de Proxy (Exemplo Echo):**
 
 ```bash
-curl -i http://localhost:9000/ping
-curl -i http://localhost:9000/healthz
-curl -i -X POST http://localhost:9000/echo -H "Content-Type: application/json" -d '{"name":"Joaozin","age":21}'
+curl -i -X POST http://localhost:8000/proxy/echo \
+        -H "X-API-Key: K1" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Joao","age":21}'
 ```
 
 ---
 
-### Proxy / Gateway (:8000)
+## 🔐 Segurança e Rate Limiting
 
-Endpoints:
-- /proxy/ping -> chama o /ping da upstream -> retorna {"pong": true}
-- /proxy/echo -> chama o /echo da upstream -> retorna o mesmo body inserido na requisição (POST)
-- /proxy/healthz -> chama o /healthz da upstream -> retorna {"ok": true}
-- /healthz -> retorna {"ok": true} (status do gateway)
+Aegis implementa as seguintes camadas de proteção:
 
-```bash
-curl -i http://localhost:8000/proxy/ping
-curl -i -X POST http://localhost:8000/proxy/echo -H "Content-Type: application/json" -d '{"name":"Joaozin","age":21}'
-curl -i http://localhost:8000/proxy/healthz
-curl -i http://localhost:8000/healthz
-```
+* **Bloqueio de requisições sem Key:** Retorna `401 Unauthorized`.
+* **Chaves Inválidas:** Retorna `403 Forbidden`.
+* **Rate Limiting:** Atualmente configurado para **5 req/s** com burst de **10**. Caso excedido, retorna `429 Too Many Requests`.
+* **Privacidade:** O header `X-API-Key` é removido antes da requisição ser encaminhada ao Upstream.
+* **Resiliência:** Recovery middleware contra panics inesperados.
+
+---
+
+## 📌 Próximos Passos
+* [ ] Quotas por consumidor
+* [ ] Observabilidade (metrics / tracing)
+* [ ] Persistência de API keys
+* [ ] Dockerfile
+* [ ] Configuração via arquivo `.env`
+* [ ] Testes unitários para middlewares
+* [ ] Circuit breaker

@@ -10,26 +10,22 @@ import (
 	"github.com/martinsdevv/aegis/internal/health"
 )
 
-func NewRouter(healthCheck *health.Checker) http.Handler {
+func NewRouter(healthCheck *health.Checker, cfg config.Config, store *middleware.RLStore) http.Handler {
 	mux := http.NewServeMux()
-	cfg, err := config.Load()
-	if err != nil {
-		log.Fatal(err)
-	}
 
 	prx, err := proxy.NewProxy(cfg.AegisUpstreamURL)
 	if err != nil {
-		http.Error(nil, "the proxy could not be created", http.StatusInternalServerError)
-		return nil
+		log.Fatal(err)
 	}
 
 	mux.HandleFunc("/healthz", health.HealthHandler(healthCheck))
 	mux.HandleFunc("/proxy/", proxy.HandleProxy(prx))
 	mux.HandleFunc("/proxy", proxy.HandleProxy(prx))
 	mux.HandleFunc("/panic", HandleNilPointer)
+	mux.HandleFunc("/rltest", HandleRLTest)
 
 	var handler http.Handler = mux
-	handler = middleware.NewMiddleware(handler)
+	handler = middleware.NewMiddleware(handler, cfg, store)
 
 	return handler
 }

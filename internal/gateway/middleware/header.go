@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"context"
-	"log"
 	"net/http"
 
 	"github.com/martinsdevv/aegis/internal/config"
@@ -43,12 +42,8 @@ func Chain(h http.Handler, mws ...Middleware) http.Handler {
 	return h
 }
 
-func NewMiddleware(handler http.Handler) http.Handler {
-	cfg, err := config.Load()
-	if err != nil {
-		log.Fatal(err)
-	}
-	return Chain(handler, ContentID("contentID"), Logger, Recover, Keyring(cfg.AegisAPIKeys))
+func NewMiddleware(handler http.Handler, cfg config.Config, store *RLStore) http.Handler {
+	return Chain(handler, ContentID("contentID"), Recover, Logger, WithAPIKey(), Keyring(cfg.AegisAPIKeys), RateLimit(store))
 }
 
 func ContentID(defaultID string) Middleware {
