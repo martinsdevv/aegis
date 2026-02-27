@@ -3,7 +3,6 @@ package main
 import (
 	"log"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/martinsdevv/aegis/internal/config"
@@ -20,22 +19,24 @@ func main() {
 
 	healthCheck := health.New()
 	store := middleware.NewRLStore(5, 10, 30*time.Minute)
-	router := gtwhttp.NewRouter(healthCheck, cfg, store)
+	redisClient := middleware.NewRedisClient(cfg.AegisRedisAddr)
+
+	router := gtwhttp.NewRouter(healthCheck, cfg, store, redisClient)
 
 	go func() {
 		t := time.NewTicker(5 * time.Minute)
 		defer t.Stop()
 		for range t.C {
-			store.Cleanup(time.Now())
+			store.Cleanup()
 		}
 	}()
 
 	go func() {
-		time.Sleep(time.Second * 2)
+		time.Sleep(2 * time.Second)
 		healthCheck.SetReady()
 	}()
 
-	listenAddr := []string{":", cfg.AegisListenPort}
-	addr := strings.Join(listenAddr, "")
+	addr := ":" + cfg.AegisListenPort
+	log.Printf("Aegis listening on %s", addr)
 	log.Fatal(http.ListenAndServe(addr, router))
 }

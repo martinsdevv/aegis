@@ -30,7 +30,8 @@ func NewRLStore(r rate.Limit, burst int, ttl time.Duration) *RLStore {
 	}
 }
 
-func (s *RLStore) get(key string, now time.Time) *rate.Limiter {
+func (s *RLStore) get(key string) *rate.Limiter {
+	now := time.Now()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -44,7 +45,8 @@ func (s *RLStore) get(key string, now time.Time) *rate.Limiter {
 	return lim
 }
 
-func (s *RLStore) Cleanup(now time.Time) {
+func (s *RLStore) Cleanup() {
+	now := time.Now()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -63,8 +65,7 @@ func RateLimit(store *RLStore) Middleware {
 				http.Error(w, "missing API key", http.StatusUnauthorized)
 				return
 			}
-
-			lim := store.get(k, time.Now())
+			lim := store.get(k)
 			if !lim.Allow() {
 				w.Header().Set("Retry-After", "1")
 				http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)

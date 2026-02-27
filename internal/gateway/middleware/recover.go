@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"context"
 	"log/slog"
 	"net/http"
 	"runtime/debug"
@@ -19,7 +18,6 @@ func Recover(next http.Handler) http.Handler {
 					"panic", err,
 					"stack", string(debug.Stack()),
 				)
-
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusInternalServerError)
 				_, _ = w.Write([]byte(`{"error": "internal server error"}`))
@@ -27,9 +25,4 @@ func Recover(next http.Handler) http.Handler {
 		}()
 		next.ServeHTTP(w, r)
 	})
-}
-
-func ContentIDFromContext(ctx context.Context) (string, bool) {
-	v, ok := ctx.Value(ctxKeyContentID{}).(string)
-	return v, ok && v != "missing"
 }

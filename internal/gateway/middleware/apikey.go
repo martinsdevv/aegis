@@ -31,10 +31,9 @@ func Keyring(keys []string) Middleware {
 	set := make(map[string]struct{}, len(keys))
 	for _, v := range keys {
 		v = strings.TrimSpace(v)
-		if v == "" {
-			continue
+		if v != "" {
+			set[v] = struct{}{}
 		}
-		set[v] = struct{}{}
 	}
 
 	return func(next http.Handler) http.Handler {

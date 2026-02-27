@@ -13,6 +13,7 @@ type Config struct {
 	AegisUpstreamURL  string
 	AegisAPIKeys      []string
 	AegisUpstreamPort string
+	AegisRedisAddr    string
 }
 
 func Load() (Config, error) {
@@ -26,6 +27,7 @@ func Load() (Config, error) {
 		AegisUpstreamURL:  getEnv("AegisUpstreamURL", "http://localhost:9000"),
 		AegisUpstreamPort: getEnv("AegisUpstreamPort", "9000"),
 		AegisAPIKeys:      parseList("AegisAPIKeys"),
+		AegisRedisAddr:    getEnv("AegisRedisAddr", "localhost:6379"),
 	}
 
 	return cfg, nil
