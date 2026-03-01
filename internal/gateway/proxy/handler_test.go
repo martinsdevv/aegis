@@ -63,10 +63,7 @@ func TestProxyHandler(t *testing.T) {
 	upstreamSrv := httptest.NewServer(upstreamMux)
 	defer upstreamSrv.Close()
 
-	prx, err := NewProxy(upstreamSrv.URL)
-	if err != nil {
-		t.Fatalf("could not create the proxy: %v", err)
-	}
+	prx := NewDynamicProxy()
 
 	proxySrv := httptest.NewServer(HandleProxy(prx))
 	defer proxySrv.Close()

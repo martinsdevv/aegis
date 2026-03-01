@@ -1,7 +1,6 @@
 package gtwhttp
 
 import (
-	"log"
 	"net/http"
 
 	"github.com/martinsdevv/aegis/internal/config"
@@ -11,24 +10,23 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-func NewRouter(healthCheck *health.Checker, cfg config.Config, store *middleware.RLStore, redisClient *redis.Client) http.Handler {
+func NewRouter(healthCheck *health.Checker, cfg config.Config, store *middleware.RLStore, redisClient *redis.Client, apiKeyStore *middleware.APIKeyStore) http.Handler {
 	mux := http.NewServeMux()
 
-	prx, err := proxy.NewProxy(cfg.AegisUpstreamURL)
-	if err != nil {
-		log.Fatal(err)
-	}
+	prx := proxy.NewDynamicProxy()
+	adminHandler := NewAdminHandler(apiKeyStore)
 
 	mux.HandleFunc("/healthz", health.HealthHandler(healthCheck))
 	mux.HandleFunc("/proxy/", proxy.HandleProxy(prx))
 	mux.HandleFunc("/proxy", proxy.HandleProxy(prx))
 	mux.HandleFunc("/panic", HandleNilPointer)
 	mux.HandleFunc("/rltest", HandleRLTest)
+	mux.HandleFunc("/admin/cache/apikey", adminHandler.InvalidateAPIKey)
 
-	quotaMgr := middleware.NewQuotaManager(redisClient, 2)
+	quotaMgr := middleware.NewQuotaManager(redisClient)
 
 	var handler http.Handler = mux
-	handler = middleware.NewMiddleware(handler, cfg, store, quotaMgr, redisClient)
+	handler = middleware.NewMiddleware(handler, cfg, store, quotaMgr, redisClient, apiKeyStore)
 
 	return handler
 }

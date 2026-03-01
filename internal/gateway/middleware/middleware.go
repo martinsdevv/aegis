@@ -14,16 +14,15 @@ func Chain(h http.Handler, mws ...Middleware) http.Handler {
 	return h
 }
 
-func NewMiddleware(handler http.Handler, cfg config.Config, rlStore *RLStore, quotaMgr *QuotaManager, redisClient *redis.Client) http.Handler {
+func NewMiddleware(handler http.Handler, cfg config.Config, rlStore *RLStore, quotaMgr *QuotaManager, redisClient *redis.Client, apiKeyStore *APIKeyStore) http.Handler {
 	return Chain(handler,
 		RequestID(),
 		ContentID(),
 		Recover,
-		Logger,
-		WithAPIKey(),
-		Keyring(cfg.AegisAPIKeys),
+		WithAPIKey(apiKeyStore),
 		RateLimit(rlStore),
 		quotaMgr.Enforce,
-		PublishUsage(redisClient, "aether.usage.v1", cfg.AegisUpstreamURL),
+		Logger,
+		PublishUsage(redisClient, "aether.usage.v1"),
 	)
 }

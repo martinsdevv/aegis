@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -60,17 +61,24 @@ func (s *RLStore) Cleanup() {
 func RateLimit(store *RLStore) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			k, ok := APIKeyFromContext(r.Context())
+
+			apiKey, ok := APIKeyFromContext(r.Context())
 			if !ok {
 				http.Error(w, "missing API key", http.StatusUnauthorized)
 				return
 			}
-			lim := store.get(k)
+
+			// Usa ID como chave estável
+			key := strconv.FormatInt(apiKey.ID, 10)
+
+			lim := store.get(key)
+
 			if !lim.Allow() {
 				w.Header().Set("Retry-After", "1")
 				http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
 				return
 			}
+
 			next.ServeHTTP(w, r)
 		})
 	}

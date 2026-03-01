@@ -3,8 +3,9 @@ package middleware
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -30,49 +31,96 @@ func NewRedisClient(addr string) *redis.Client {
 	})
 }
 
-func PublishUsage(redisClient *redis.Client, streamName string, upstreamHost string) Middleware {
+func PublishUsage(redisClient *redis.Client, streamName string) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
 			start := time.Now()
-			wrapped := &responseWriter{ResponseWriter: w, status: http.StatusOK}
 
-			next.ServeHTTP(wrapped, r)
+			// buffer de resposta
+			buf := newResponseBuffer()
 
-			latency := time.Since(start)
+			next.ServeHTTP(buf, r)
+
+			apiKey, ok := APIKeyFromContext(r.Context())
+			if !ok {
+				buf.FlushTo(w)
+				return
+			}
+
 			reqID, _ := RequestIDFromContext(r.Context())
-			apiKey, _ := APIKeyFromContext(r.Context())
 
 			event := UsageEvent{
 				EventID:    uuid.NewString(),
 				EventVer:   1,
 				RequestID:  reqID,
-				APIKeyID:   apiKey,
-				Upstream:   upstreamHost,
+				APIKeyID:   strconv.FormatInt(apiKey.ID, 10),
+				Upstream:   apiKey.UpstreamHost,
 				Path:       r.URL.Path,
 				Method:     r.Method,
-				StatusCode: wrapped.status,
-				LatencyMS:  latency.Milliseconds(),
+				StatusCode: buf.status,
+				LatencyMS:  time.Since(start).Milliseconds(),
 				Timestamp:  time.Now().UTC().Format(time.RFC3339),
 			}
 
 			payload, err := json.Marshal(event)
 			if err != nil {
-				http.Error(wrapped, "internal server error", http.StatusInternalServerError)
+				log.Println("marshal error:", err)
+				http.Error(w, "internal error", http.StatusInternalServerError)
 				return
 			}
 
-			err = redisClient.XAdd(context.Background(), &redis.XAddArgs{
-				Stream: streamName,
-				Values: map[string]interface{}{"payload": payload},
-			}).Err()
+			if redisClient != nil {
+				err = redisClient.XAdd(context.Background(), &redis.XAddArgs{
+					Stream: streamName,
+					Values: map[string]interface{}{"payload": payload},
+				}).Err()
 
-			if err != nil {
-				fmt.Println("Redis XAdd error:", err)
-				http.Error(w, "service unavailable", http.StatusServiceUnavailable)
-				return
-			} else {
-				fmt.Println("Published to Redis:", string(payload))
+				if err != nil {
+					log.Println("redis error:", err)
+					http.Error(w, "service unavailable", http.StatusServiceUnavailable)
+					return
+				}
 			}
+
+			// só escreve depois do sucesso
+			buf.FlushTo(w)
 		})
 	}
+}
+
+type responseBuffer struct {
+	header http.Header
+	body   []byte
+	status int
+}
+
+func newResponseBuffer() *responseBuffer {
+	return &responseBuffer{
+		header: make(http.Header),
+		status: http.StatusOK,
+	}
+}
+
+func (r *responseBuffer) Header() http.Header {
+	return r.header
+}
+
+func (r *responseBuffer) Write(b []byte) (int, error) {
+	r.body = append(r.body, b...)
+	return len(b), nil
+}
+
+func (r *responseBuffer) WriteHeader(statusCode int) {
+	r.status = statusCode
+}
+
+func (r *responseBuffer) FlushTo(w http.ResponseWriter) {
+	for k, v := range r.header {
+		for _, vv := range v {
+			w.Header().Add(k, vv)
+		}
+	}
+	w.WriteHeader(r.status)
+	w.Write(r.body)
 }

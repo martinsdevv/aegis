@@ -1,21 +1,15 @@
 package main
 
 import (
-	"log"
 	"net/http"
 	"strings"
 	"time"
 
-	"github.com/martinsdevv/aegis/internal/config"
 	"github.com/martinsdevv/aegis/internal/health"
 	mockhttp "github.com/martinsdevv/aegis/internal/upstreammock/upshttp"
 )
 
 func main() {
-	cfg, err := config.Load()
-	if err != nil {
-		log.Fatal(err)
-	}
 
 	healthChecker := health.New()
 	router := mockhttp.NewRouter(healthChecker)
@@ -25,7 +19,7 @@ func main() {
 		healthChecker.SetReady()
 	}()
 
-	listenAddr := []string{":", cfg.AegisUpstreamPort}
+	listenAddr := []string{":", "9000"}
 
 	http.ListenAndServe(strings.Join(listenAddr, ""), router)
 }

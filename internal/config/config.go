@@ -9,25 +9,21 @@ import (
 )
 
 type Config struct {
-	AegisListenPort   string
-	AegisUpstreamURL  string
-	AegisAPIKeys      []string
-	AegisUpstreamPort string
-	AegisRedisAddr    string
+	AEGIS_LISTEN_PORT  string
+	AEGIS_REDIS_ADDR   string
+	AEGIS_DATABASE_URL string
 }
 
 func Load() (Config, error) {
 	_ = godotenv.Load()
 
-	if err := RequireEnvs("AegisUpstreamURL", "AegisAPIKeys", "AegisListenPort", "AegisUpstreamPort"); err != nil {
+	if err := RequireEnvs("AEGIS_LISTEN_PORT", "AEGIS_DATABASE_URL"); err != nil {
 		return Config{}, err
 	}
 	cfg := Config{
-		AegisListenPort:   getEnv("AegisListenPort", "8000"),
-		AegisUpstreamURL:  getEnv("AegisUpstreamURL", "http://localhost:9000"),
-		AegisUpstreamPort: getEnv("AegisUpstreamPort", "9000"),
-		AegisAPIKeys:      parseList("AegisAPIKeys"),
-		AegisRedisAddr:    getEnv("AegisRedisAddr", "localhost:6379"),
+		AEGIS_LISTEN_PORT:  getEnv("AEGIS_LISTEN_PORT", "8000"),
+		AEGIS_REDIS_ADDR:   getEnv("AEGIS_REDIS_ADDR", "localhost:6379"),
+		AEGIS_DATABASE_URL: getEnv("AEGIS_DATABASE_URL", ""),
 	}
 
 	return cfg, nil

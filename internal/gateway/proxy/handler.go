@@ -1,77 +1,52 @@
 package proxy
 
 import (
-	"context"
-	"fmt"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"strings"
+
+	"github.com/martinsdevv/aegis/internal/gateway/middleware"
 )
 
-type ctxKeyUpstreamHost struct{}
+func NewDynamicProxy() *httputil.ReverseProxy {
+	return &httputil.ReverseProxy{
+		Director: func(r *http.Request) {
 
-type FinalURL struct {
-	scheme string
-	host   string
-	path   string
+			apiKey, ok := middleware.APIKeyFromContext(r.Context())
+			if !ok || apiKey.UpstreamHost == "" {
+				return
+			}
+
+			target := apiKey.UpstreamHost
+
+			if !strings.Contains(target, "://") {
+				target = "http://" + target
+			}
+
+			u, err := url.Parse(target)
+			if err != nil {
+				return
+			}
+
+			r.URL.Scheme = u.Scheme
+			r.URL.Host = u.Host
+			r.Host = u.Host
+
+			if r.URL.Path == "/proxy" {
+				r.URL.Path = "/"
+			} else if strings.HasPrefix(r.URL.Path, "/proxy/") {
+				r.URL.Path = strings.TrimPrefix(r.URL.Path, "/proxy")
+			}
+
+			ctx := middleware.SetUpstreamHost(r.Context(), u.Host)
+			*r = *r.WithContext(ctx)
+		},
+	}
 }
 
 func HandleProxy(proxy *httputil.ReverseProxy) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		proxy.ServeHTTP(w, r)
 	}
-}
-
-func NewProxy(targetHost string) (*httputil.ReverseProxy, error) {
-	if !strings.Contains(targetHost, "://") {
-		targetHost = "http://" + targetHost
-	}
-
-	u, err := url.Parse(targetHost)
-	if err != nil {
-		return nil, fmt.Errorf("could not parse target host: %w", err)
-	}
-
-	prxURL := FinalURL{
-		scheme: u.Scheme,
-		host:   u.Host,
-		path:   u.Path,
-	}
-
-	newProxy := httputil.NewSingleHostReverseProxy(prxURL.URL())
-	defaultDirector := newProxy.Director
-	newDirector := func(r *http.Request) {
-		defaultDirector(r)
-		if r.URL.Path == "/proxy" {
-			r.URL.Path = "/"
-			return
-		}
-		if strings.HasPrefix(r.URL.Path, "/proxy/") {
-			r.URL.Path = strings.TrimPrefix(r.URL.Path, "/proxy")
-		}
-	}
-	newProxy.Director = newDirector
-	newProxy.ModifyResponse = func(resp *http.Response) error {
-		resp.Header.Set("X-Upstream-Host", resp.Request.URL.Host)
-		return nil
-	}
-	return newProxy, nil
-}
-
-func (u FinalURL) URL() *url.URL {
-	return &url.URL{
-		Scheme: u.scheme,
-		Host:   u.host,
-		Path:   u.path,
-	}
-}
-
-func (u FinalURL) String() string {
-	return u.URL().String()
-}
-
-func UpstreamHostFromContext(ctx context.Context) (string, bool) {
-	v, ok := ctx.Value(ctxKeyUpstreamHost{}).(string)
-	return v, ok
 }
