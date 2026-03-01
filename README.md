@@ -231,8 +231,7 @@ curl -i -H "X-API-Key: DEV_KEY_123" http://localhost:8000/proxy/get
 * [ ] Métricas Prometheus
 * [ ] Request ID global
 * [ ] Circuit breaker
-* [ ] Graceful shutdown
-* [ ] Dockerfile
+* [x] Graceful shutdown
 * [ ] Testes unitários e integração
 
 ---
