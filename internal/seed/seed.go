@@ -17,7 +17,7 @@ func RunSeed(ctx context.Context, db *sql.DB) error {
 	}
 
 	seeds := []Seed{
-		{"default-dev", "DEV_KEY_123", "https://httpbin.org", 2},
+		{"default-dev", "DEV_KEY_123", "https://httpbin.org", 10000},
 		{"internal-test", "TEST_KEY_456", "https://postman-echo.com", 5000},
 	}
 
