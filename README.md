@@ -11,7 +11,7 @@ Aegis é um **API Gateway modular escrito em Go** que atua como um reverse proxy
 
 O projeto demonstra **arquitetura modular em Go**, fluxo de requisições explícito, fundamentos de segurança em APIs HTTP e preparação para **escalabilidade horizontal**.
 
-> **Encaixe na plataforma:** o Aegis deve atuar como **gateway de borda** (casca e módulos atrás de uma URL; Identity emite JWT). Ver documentação em [`docs/`](docs/README.md) — visão, contrato, estado atual e lacunas.
+> **Encaixe na plataforma:** gateway de borda — SPA (casca ou módulo) acessa APIs via `/api/{modulo}/**`; back↔back direto; SPAs separados **sem iframe**. Ver [`docs/`](docs/README.md).
 
 ---
 

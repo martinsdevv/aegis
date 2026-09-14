@@ -6,6 +6,20 @@ Descrição objetiva do que o repositório implementa **hoje**, antes das adapta
 
 O Aegis na `main` opera como **gateway orientado a API Key de consumidor**:
 
+```mermaid
+sequenceDiagram
+  participant Client
+  participant Aegis
+  participant DB as Postgres_Redis
+  participant Up as Upstream_da_API_Key
+
+  Client->>Aegis: request com X-API-Key
+  Aegis->>DB: valida chave e quota
+  Aegis->>Up: proxy /proxy/*
+  Up-->>Aegis: resposta
+  Aegis-->>Client: resposta
+```
+
 1. Cliente envia `X-API-Key`.
 2. Chave é validada (PostgreSQL + cache Redis).
 3. Rate limit e quota mensal são aplicados por chave.

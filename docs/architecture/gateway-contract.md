@@ -1,99 +1,112 @@
 # Contrato do gateway
 
-Especificação do comportamento esperado do Aegis como gateway de borda. Destina-se a orientar implementação e integração com casca, Identity e módulos.
+Comportamento esperado do Aegis: **borda do browser para as APIs**; **sem iframe**; **back↔back direto**.
 
 ## Superfície HTTP
 
 | Prefixo | Autenticação | Destino |
 |---------|--------------|---------|
-| `/api/{modulo}/**` | JWT Bearer obrigatório (exceto regras explícitas) | Container do módulo (`{modulo}` resolvido por configuração) |
-| `/api/identity/**` | Conforme rota (login/JWKS públicos; demais protegidas) | Módulo Identity |
-| `/public/**` | Sem token | Upstreams públicos configurados |
-| `/healthz` | Sem token | Saúde do próprio gateway |
+| `/api/{modulo}/**` | JWT Bearer (exceto exceções explícitas) | Container do módulo (mapa por env) |
+| `/api/identity/**` | Conforme rota (login/JWKS públicos; demais protegidas) | Identity |
+| `/public/**` | Sem token | Upstreams públicos |
+| `/healthz` | Sem token | Saúde do gateway |
 
-O mapeamento `{modulo} → URL base` vem de **variáveis de ambiente** (ou arquivo de config carregado no boot), nunca de código fixo por módulo.
-
-Exemplo conceitual:
+Exemplo de configuração:
 
 ```text
 AEGIS_MODULES=identity=http://identity:8080,financeiro=http://financeiro-api:9001,crm=http://crm-api:9002
 ```
 
-## Fluxo browser → módulo
+Destinos **sempre** por ambiente, nunca hardcoded por módulo no código.
 
-```text
-SPA do módulo
-    │  Authorization: Bearer <access_token>
-    ▼
-Aegis
-    │  1. CORS / Request-Id
-    │  2. Valida JWT (JWKS do Identity)
-    │  3. Rejeita claims/headers de tenant enviados pelo cliente
-    │  4. Proxy para o upstream do módulo (timeout)
-    ▼
-API do módulo
-    │  Valida JWT novamente (JWKS)
-    │  Aplica tenant_id e perms a partir das claims
-    ▼
-Resposta
+## Fluxo SPA do módulo → API (via gateway)
+
+```mermaid
+sequenceDiagram
+  participant SPA as SPA_do_modulo
+  participant Aegis
+  participant API as API_do_modulo
+
+  SPA->>Aegis: /api/{modulo}/... Bearer JWT
+  Note over Aegis: CORS e Request-Id
+  Note over Aegis: Valida JWT via JWKS
+  Note over Aegis: Ignora tenant enviado pelo cliente
+  Aegis->>API: proxy com timeout
+  Note over API: Valida JWT novamente via JWKS
+  Note over API: Aplica tenant_id e perms
+  API-->>Aegis: resposta
+  Aegis-->>SPA: resposta
 ```
 
-## Fluxo back-end ↔ back-end
+O SPA **não** chama o host interno do container. Chama a origem pública do gateway.
 
-```text
-financeiro-api  ──────HTTP direto──────►  crm-api
-                     (rede interna)
-                     sem passar pelo Aegis
+## Fluxo back-end ↔ back-end (sem gateway)
+
+```mermaid
+flowchart LR
+  Fin["financeiro-api"]
+  CRM["crm-api"]
+  Aegis["Aegis"]
+
+  Fin -->|"HTTP direto\nrede interna"| CRM
+  Fin -.->|"não passa"| Aegis
 ```
 
-O gateway **não** é ponto único de falha para integração entre módulos.
+## Fronts sem iframe
+
+- Cada módulo tem **SPA próprio** (build/container próprios).
+- A casca navega para a URL do SPA do módulo (mesmo site via reverse proxy de estáticos, ou path dedicado — decisão de deploy).
+- **Sem** iframe e **sem** protocolo `postMessage` `plataforma:sessao`.
+- No boot, o SPA do módulo obtém/renova sessão via **Identity** (`/api/identity/...`) na origem do gateway e mantém o access token em memória; depois chama `/api/{modulo}/**` com Bearer.
 
 ## Autenticação na borda
 
-| Requisito | Comportamento |
-|-----------|----------------|
-| Token ausente ou inválido em rota protegida | `401` no gateway |
-| Token válido | Encaminha ao módulo (módulo revalida) |
-| JWKS | Consumido de URL do Identity (cache local; respeito a `kid` / rotação) |
-| Emissão de token | Fora do Aegis (Identity) |
+| Situação | Comportamento |
+|----------|----------------|
+| Rota protegida sem token / token inválido | `401` no Aegis |
+| Token válido | Encaminha; módulo revalida |
+| JWKS | URL do Identity; cache; rotação por `kid` |
+| Emissão de token | Só Identity |
 
-Claims relevantes no JWT de usuário (emitidas pelo Identity): `iss`, `aud`, `sub`, `tenant_id`, identidade, `roles` / `perms`, `iat`, `exp`.
+Claims típicas: `iss`, `aud`, `sub`, `tenant_id`, identidade, `roles`/`perms`, `iat`, `exp`.
 
 ## Isolamento por tenant
 
-- A única fonte de `tenant_id` para requisições de usuário é o **JWT**.
-- Valores de tenant no body, query string ou headers enviados pelo cliente devem ser **ignorados ou removidos** antes do proxy.
-- Exceção de produto: token de serviço (Identity), em que o tenant pode ir explícito na chamada — regra definida pelo Identity, não inventada no gateway.
+- `tenant_id` só do JWT.
+- Body/query/header de tenant mandados pelo cliente: ignorar/remover no gateway.
+- Exceção: token de serviço (regra do Identity).
 
-## Cross-Origin Resource Sharing (CORS)
+## CORS
 
-- Política definida **somente no Aegis**.
+- Centralizado no Aegis (browser fala com uma origem de API).
 - Módulos não precisam configurar CORS para o browser.
-- Origens, métodos e headers permitidos vêm de configuração.
 
 ## Observabilidade e resiliência
 
 | Aspecto | Expectativa |
 |---------|-------------|
-| `X-Request-Id` | Gerado ou propagado na entrada; encaminhado aos upstreams; ecoado na resposta |
-| Timeout de proxy | Ordem de 3 segundos por chamada ao módulo |
-| Módulo indisponível / timeout | `503` com indicação do módulo afetado (envelope estável) |
-| Rate limit em `/public/**` | Por IP; `429` sem afetar rotas autenticadas |
+| `X-Request-Id` | Gerado/propagado; eco na resposta |
+| Timeout | ~3s por proxy ao módulo |
+| Upstream down / timeout | `503` com indicação do módulo |
+| `/public/**` | Rate limit por IP → `429` |
 
-## Responsabilidades dos integradores
+## Responsabilidades
 
 ### Casca
 
-- Autenticar o usuário via Identity (através do gateway).
-- Entregar sessão aos SPAs dos módulos (boot / contexto da mesma origem).
-- Chamar apenas a origem pública do gateway.
+- UX de login (contra Identity via gateway).
+- Menu e navegação para os SPAs dos módulos (sem iframe).
 
 ### Identity
 
-- Emitir e renovar tokens; publicar JWKS; expor `/auth/me` e demais APIs de identidade.
+- Tokens, JWKS, `/me`, usuários, tenant, perms.
 
-### Módulos
+### SPA do módulo
 
-- Expor API sob o contrato acordado com o prefixo `/api/{codigo}/**`.
-- Validar JWT localmente (JWKS); aplicar RBAC e filtro por `tenant_id`.
-- Para falar com outro módulo: chamada direta na rede interna.
+- Boot: sessão via Identity na origem do gateway.
+- APIs do domínio: `/api/{seu-codigo}/**` via gateway com Bearer.
+
+### API do módulo
+
+- Validar JWT (JWKS); RBAC; filtro por `tenant_id`.
+- Chamar outros módulos **direto** na rede interna.
